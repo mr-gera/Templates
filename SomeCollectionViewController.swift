@@ -177,11 +177,4 @@ extension SomeCollectionViewController: UICollectionViewDelegate, UICollectionVi
             loadData(filters: filters, page: currentPage + 1, showHud: true)
         }
     }
-    
-}
-
-extension SomeCollectionViewController: StoryboardLoadable {
-    static var storyboardName: String {
-        return "Utility"
-    }
 }
