@@ -8,11 +8,11 @@
 
 import UIKit
 
-struct DataItem: Codable {
+fileprivate struct DataItem: Codable {
     let userName: String?
 }
 
-class Provider {
+fileprivate class Provider {
     
     // MARK: - Private Properties
     private var items = [DataItem]()
@@ -76,7 +76,7 @@ class SomeTableViewController: UIViewController  {
     
     // MARK: - Private Methods
     private func setupTableView() {
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
+        tableView.register(SomeTableViewCell.nib(), forCellReuseIdentifier: "cell")
         tableView.delegate = self
         tableView.dataSource = self
         tableView.refreshControl = refreshControl
@@ -90,10 +90,6 @@ class SomeTableViewController: UIViewController  {
     
     private func loadData(page: Int = 0, showHud: Bool = true) {
         if dataLoading {return}
-        
-//        if page * itemsPerPage + itemsPerPage <= items.count {
-//            return
-//        }
         
         if page == 0 {
             items.removeAll()
@@ -147,10 +143,10 @@ extension SomeTableViewController: UITableViewDelegate, UITableViewDataSource {
     
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell:UITableViewCell = self.tableView.dequeueReusableCell(withIdentifier: "cell")! as UITableViewCell
-        
-        cell.textLabel?.text = self.filtered[indexPath.row].userName
-        
+        let cell: SomeTableViewCell = self.tableView.dequeueReusableCell(withIdentifier: "cell") as! SomeTableViewCell
+//        cell.titl
+//        cell.ti?.text = self.filtered[indexPath.row].userName
+        cell.titleLabel.text = self.filtered[indexPath.row].userName
         return cell
     }
     
