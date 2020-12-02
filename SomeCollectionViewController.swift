@@ -8,44 +8,74 @@
 
 import UIKit
 
+fileprivate struct DataItem: Codable {
+    let userName: String?
+}
+
+fileprivate class Provider {
+    
+    // MARK: - Private Properties
+    private var items = [DataItem]()
+    
+    init() {
+        prepareData()
+    }
+    
+    // MARK: - Private Methods
+    private func prepareData() {
+        for i in 0...100 {
+            items.append(DataItem(userName: "User \(i)"))
+        }
+    }
+    
+    // MARK: - Public Methods
+    func getItems(page: Int, count: Int, closure: @escaping (_:  [DataItem]) -> Void) {
+        if page * count + count > items.count {
+            closure([])
+        }
+        
+        var res = [DataItem]()
+        
+        for i in page * count ..< page * count + count {
+            res += [items[i]]
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            closure(res)
+        }
+    }
+}
+
+@IBDesignable
 class SomeCollectionViewController: UIViewController {
+    
+    @IBInspectable var cellsPerRow: Int = 2
+    @IBInspectable var minimumInteritemSpacing: Int = 8
+    @IBInspectable var cellHeight: Int = 40
+    @IBInspectable var minimumLineSpacing: Int = 8
+    @IBInspectable var itemsPerPage: Int = 10
     
     // MARK: - Outlets
     @IBOutlet weak var collectionView: UICollectionView!
     
     // MARK: - Private Properties
 
-    fileprivate var refreshControl = UIRefreshControl()
-    fileprivate let cellsPerRow = 2.0
-    fileprivate var minimumInteritemSpacing = 8
-    fileprivate var cellHeight = 230
-    fileprivate let minimumLineSpacing = 8
-    fileprivate var currentPage = 0
-    fileprivate var items = ["Item1", "Item2"]
-    fileprivate var loading = false
-    
-    // MARK: - Public Properties
-    fileprivate var filters: [String:Any]?
-    var delegate: ItemListViewControllerDelegate? = nil {
-        didSet {
-            loadData(filters: nil, showHud: true)
-        }
-    }
+    private var refreshControl = UIRefreshControl()
+
+    private var currentPage = 0
+    private var items = [DataItem]()
+    private var filtered = [DataItem]()
+    private var dataLoading = false
+    private let provider = Provider()
     
     // MARK: - UIViewController
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        setupLayout()
-       
-        collectionView.register(UICollectionViewCell.self, forCellWithReuseIdentifier: String(describing: UICollectionViewCell.self))
-
         refreshControl.addTarget(self, action: #selector(refresh), for: .valueChanged)
-        collectionView.refreshControl = refreshControl
-        
-        collectionView.delegate = self
-        collectionView.dataSource = self
         collectionView.reloadData()
+        setupCollectionView()
+        loadData()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -55,7 +85,6 @@ class SomeCollectionViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
     }
-    
     
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
@@ -67,8 +96,13 @@ class SomeCollectionViewController: UIViewController {
     
     // MARK: - Private Type Methods
     
-    func setupLayout() {
+    func setupCollectionView() {
         
+        collectionView.register(SomeCollectionViewCell.nib(), forCellWithReuseIdentifier: String(describing: SomeCollectionViewCell.self))
+        collectionView.refreshControl = refreshControl
+        collectionView.delegate = self
+        collectionView.dataSource = self
+
         guard let flowLayout = collectionView?.collectionViewLayout as? UICollectionViewFlowLayout else { return }
         
         flowLayout.minimumInteritemSpacing = CGFloat(minimumInteritemSpacing)
@@ -76,60 +110,67 @@ class SomeCollectionViewController: UIViewController {
         flowLayout.sectionInset = UIEdgeInsets(top: CGFloat(minimumInteritemSpacing), left: CGFloat(minimumInteritemSpacing), bottom: CGFloat(minimumInteritemSpacing), right: CGFloat(minimumInteritemSpacing)) // not required
     }
     
-    @objc func loadData(filters: [String:Any]?, page: Int = 0, showHud: Bool) {
-        if loading {return}
-        loading = true
+    @objc private func refresh() {
+        currentPage = 0
+        updateUI()
+        loadData()
+    }
+    
+    private func loadData(page: Int = 0, showHud: Bool = true) {
+        if dataLoading {return}
         
         if page == 0 {
-            currentPage = 0
             items.removeAll()
         }
         
-        delegate?.loadData(filters: filters, pageNumber: page, countOnPage: 100, showHud: showHud) { [weak self]
-            response in
-            
-            guard let self = self else {
-                return
+        if showHud {
+            ProgressHUD.showHud()
+        }
+        
+        dataLoading = true
+        provider.getItems(page: page, count: itemsPerPage) { [weak self] items in
+        
+            if showHud {
+                ProgressHUD.hideHud()
             }
             
-            self.collectionView.reloadSections([1])
+            guard let self = self else {return}
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                self.loading = false
-                self.view.isUserInteractionEnabled = true
+            if items.count > 0 {
+                self.currentPage = page
             }
+            
+            self.items += items
+            self.applyFilter()
+            self.updateUI()
+            
+            self.dataLoading = false
         }
     }
     
-    
-    @objc private func refresh() {
-        currentPage = 0
-        loadData(filters: filters, page: 0, showHud: true)
-    }
-
-    
-    func applyFilters() {
-        
-        self.currentPage = 0
-        self.loadData(filters: self.filters, page: 0, showHud: true)
+    private func applyFilter() {
+        filtered = items
     }
     
-    @objc func updateCell(cell: UICollectionViewCell, at indexPath: IndexPath) {
+    private func updateUI() {
+        refreshControl.endRefreshing()
+        collectionView.reloadData()
+    }
+    
+    @objc func updateCell(cell: SomeCollectionViewCell, at indexPath: IndexPath) {
         
-        if indexPath.row >= items.count {return}
-        let item = items[indexPath.row]
-        let label = UILabel(frame: cell.bounds)
-        label.text = item
-        label.textAlignment = .center
-        label.backgroundColor = .gray
-        cell.addSubview(label)
+        if indexPath.row >= filtered.count {return}
+        let item = filtered[indexPath.row]
+        
+        cell.titleLabel.text = item.userName
     }
 }
 
 extension SomeCollectionViewController: UICollectionViewDelegate, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout
 {
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: String(describing: UICollectionViewCell.self), for: indexPath)
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: String(describing: SomeCollectionViewCell.self), for: indexPath) as! SomeCollectionViewCell
+        
         updateCell(cell: cell, at: indexPath)
         
         return cell
@@ -140,11 +181,11 @@ extension SomeCollectionViewController: UICollectionViewDelegate, UICollectionVi
     }
     
     func numberOfSections(in collectionView: UICollectionView) -> Int {
-        return 2
+        return 1
     }
     
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        return items.count
+        return filtered.count
     }
     
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
@@ -160,21 +201,28 @@ extension SomeCollectionViewController: UICollectionViewDelegate, UICollectionVi
     @objc func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         var width = CGFloat(collectionView.frame.width) / CGFloat(cellsPerRow)
        
-        width -= (CGFloat(minimumInteritemSpacing))
+        width -= (CGFloat(minimumInteritemSpacing * 2))
         width -= (CGFloat(cellsPerRow - 1) * CGFloat(minimumInteritemSpacing / 2))
+        width += CGFloat(minimumInteritemSpacing / 2)
         
         return CGSize(width: width, height: CGFloat(cellHeight))
     }
     
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         
-        if loading {return}
+        if dataLoading {return}
         
         let offsetY = scrollView.contentOffset.y
         let contentHeight = scrollView.contentSize.height
         
         if offsetY > contentHeight - scrollView.frame.size.height {
-            loadData(filters: filters, page: currentPage + 1, showHud: true)
+            loadData(page: currentPage + 1, showHud: true)
         }
+    }
+}
+
+extension SomeCollectionViewController: StoryboardLoadable {
+    static var storyboardName: String {
+        return "Utility"
     }
 }
